@@ -1,0 +1,848 @@
+---
+title: "Election"
+subtitle: Project done by Chase Humiston,Judiel Salandanan, Jingyu Fang, Rick Chen, Yizhuang Kang 
+output: html_document
+Author: Chase Humiston,Judiel Salandanan, Jingyu Fang, Rick Chen, Yizhuang Kang 
+---
+
+Step 1. Data merging and cleaning.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(XML)
+library(xlsx)
+
+# added DC (district-of-columbia) at position 9
+# The state map was done by Chase and Nancy
+stateMap = data.frame(cbind(c("alabama","alaska","arizona","arkansas","california","colorado","connecticut","delaware","district of columbia","florida","georgia","hawaii","idaho","illinois","indiana","iowa","kansas","kentucky","louisiana","maine","maryland","massachusetts","michigan","minnesota","mississippi","missouri","montana","nebraska","nevada","new hampshire","new jersey","new mexico","new york","north carolina","north dakota","ohio","oklahoma","oregon","pennsylvania","rhode island","south carolina","south dakota","tennessee","texas","utah","vermont","virginia","washington","west virginia","wisconsin","wyoming"), c("AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY")))
+stateMap[,1]=sapply(stateMap[,1],as.character)
+stateMap[,2]=sapply(stateMap[,2],as.character)
+stateMap = cbind(stateMap, seq(1:51))
+
+# data source 1 2016 results
+#Firts source was done by Judiel and Rick
+election2016=read.csv("http://www.stat.berkeley.edu/users/nolan/data/voteProject/2016_US_County_Level_Presidential_Results.csv")
+
+dataframe2016 = election2016[, c("state_abbr", "county_name","votes_dem", "votes_gop")]
+names(dataframe2016) = c("State", "County", "2016 Clinton Votes", "2016 Trump Votes")
+dataframe2016$County = as.character(dataframe2016$County)
+dataframe2016$County = tolower(dataframe2016$County)
+
+# removing county type at end of every entry, remove city first b/c charles city county and james city county
+dataframe2016$County = gsub(" city$", "", dataframe2016$County)
+dataframe2016$County = gsub(" county$", "", dataframe2016$County)
+dataframe2016$County = gsub(" parish$", "", dataframe2016$County)
+dataframe2016$County = gsub(" borough$", "", dataframe2016$County)
+dataframe2016$County = gsub(" area$", "", dataframe2016$County)
+dataframe2016$County = gsub(" census area$", "", dataframe2016$County)
+
+
+
+dataframe2016$County = gsub("[.|'| ]", "", dataframe2016$County)
+dataframe2016$County[dataframe2016$State=="DC"] = "districtofcolumbia"
+dataframe2016$County[dataframe2016$County=="oglala"] = "shannon"
+dataframe2016$County[dataframe2016$County=="carson" & dataframe2016$State] = "carsoncity"
+dataframe2016= dataframe2016[29:3141,]
+
+
+# date source 2 2012 results
+# Second source was done by Judiel and Rick
+
+text2012=as.character(read.table("http://www.stat.berkeley.edu/~nolan/data/voteProject/countyVotes2012/stateNames.txt")[,1])[c(-1, -3)]
+
+address = "http://www.stat.berkeley.edu/users/nolan/data/voteProject/countyVotes2012/"
+stateAddresses = paste(paste(address, text2012, sep=""), ".xml", sep="")
+
+election2012=lapply(stateAddresses, xmlParse)
+
+# countynames: this is currently separated by state, can unlist if necessary
+countynames2012 = lapply(lapply(election2012, function(x) xmlSApply(getNodeSet(x,"//th[@class='results-county']"), xmlValue, "th")[-1]), function(x) sub(" [0-9]+.*% Reporting", "", x))
+
+# republican votes:this is currently separated by state, can unlist if necessary
+republicanVotes2012 = unlist(lapply(election2012, function(x) unlist(lapply(xmlSApply(getNodeSet(x, "//tr[contains(@class,'party-republican')]/td[@class='results-popular']"), xmlValue, "td"), trimws))))
+
+# democrat votes: this is currently separated by state, can unlist if necessary
+democratVotes2012 = unlist(lapply(election2012, function(x) unlist(lapply(xmlSApply(getNodeSet(x, "//tr[contains(@class,'party-democrat')]/td[@class='results-popular']"), xmlValue, "td"), trimws))))
+
+statenum=c()
+for (i in 1:50) {
+  statenum=c(statenum, rep(i,times=length(unlist(countynames2012[i]))))
+}
+countynames.unlist.2012 = unlist(countynames2012)
+
+#data frame of election 2012
+dataframe2012= data.frame(countynames.unlist.2012,republicanVotes2012,democratVotes2012,statenum)
+
+# no Alaska
+dataframe2012$statenum[dataframe2012$statenum != 1] = dataframe2012$statenum[dataframe2012$statenum != 1] + 1
+matches = match(dataframe2012$statenum, stateMap[,3])
+dataframe2012$statenum = stateMap[matches, 2]
+names(dataframe2012) = c("County", "2012 Republican Votes" , "2012 Democrat Votes", "State")
+dataframe2012$County = tolower(dataframe2012$County)
+dataframe2012$County = gsub("[.|'| ]", "", dataframe2012$County)
+dataframe2012$County = gsub("saint", "st", dataframe2012$County)
+dataframe2012$County[dataframe2012$County=="jeffdavis"] = "jeffersondavis"
+dataframe2012$County[dataframe2012$County=="brooklyn"] = "kings"
+dataframe2012$County[dataframe2012$County=="manhattan"] = "newyork"
+dataframe2012$County[dataframe2012$County=="statenisland"] = "richmond"
+
+# data source 3 results 2008
+# Third source was done by Judiel and Rick
+require(gdata)
+## install support for xlsx files
+installXLSXsupport()
+excelFile <- ("http://www.stat.berkeley.edu/users/nolan/data/voteProject/countyVotes2008.xlsx")
+matrix2008 = matrix(ncol=8, nrow=0)
+summarySheet = read.xls(excelFile,sheet=1)
+for ( i in 2:51) {
+  mySheet <- read.xls(excelFile, sheet=i)
+  state = matrix(ncol=1, nrow=nrow(mySheet))
+  state[,1] = i - 1
+  mySheet = cbind(mySheet, state)
+  matrix2008=rbind(matrix2008, mySheet)
+}
+
+dataframe2008=as.data.frame(matrix2008)
+dataframe2008 = dataframe2008[, -7]
+names(dataframe2008) = c("County", "Total Precincts", "Precincts Reporting", "2008 Obama Votes", "2008 McCain Votes", "Other Votes", "State")
+dataframe2008$County = as.character(dataframe2008$County)
+dataframe2008$County = substr(dataframe2008$County, 1, nchar(dataframe2008$County) - 1)
+dataframe2008$County = tolower(dataframe2008$County)
+dataframe2008$County = gsub("[.|'| ]", "", dataframe2008$County)
+dataframe2008$County = gsub("saint", "st", dataframe2008$County)
+# no DC in excel sheet
+dataframe2008$State[dataframe2008$State >= 9] = dataframe2008$State[dataframe2008$State >= 9] + 1
+dataframe2012$County = tolower(dataframe2012$County)
+
+matches = match(dataframe2008$State, stateMap[,3])
+dataframe2008$State = stateMap[matches, 2]
+dataframe2008 = dataframe2008[,c(1,4,5,7)]
+
+dataframe2008$County[dataframe2008$County=="jeffdavis"] = "jeffersondavis"
+dataframe2008$County[dataframe2008$County=="brooklyn"] = "kings"
+dataframe2008$County[dataframe2008$County=="manhattan"] = "newyork"
+dataframe2008$County[dataframe2008$County=="statenisland"] = "richmond"
+
+#4 resources 2004 results 
+# Fourth source was done by Chase and Yizhuang
+
+s4 = read.csv(url("http://www.stat.berkeley.edu/users/nolan/data/voteProject/countyVotes2004.txt "), sep="")
+sc = strsplit(as.character(s4[ ,1]), ",")
+states = sapply(sc, "[", 1)
+counties = sapply(sc, "[", 2)      
+dataframe2004 = data.frame(cbind(states, counties, s4[,2], s4[,3]))
+names(dataframe2004) = c("State","County","2004 Bush Votes","2004 Kerry Votes")
+dataframe2004$County = as.character(dataframe2004$County)
+dataframe2004$County = gsub("[.|'| ]", "", dataframe2004$County)
+matches=match(dataframe2004[,1],stateMap[,1])
+dataframe2004[,1]=stateMap[matches,2]
+dataframe2004$County[dataframe2004$State=="DC"] = "districtofcolumbia"
+dataframe2004$County[dataframe2004$County=="dade"] = "miami-dade"
+dataframe2004$County[dataframe2004$County=="miami-dade"] = "dade"
+
+
+#5 census 2010
+# Fifth source was done by Chase and Yizhuang
+#load census data from each of three sources into separate data frames
+census2010.B01003=read.csv("http://www.stat.berkeley.edu/users/nolan/data/voteProject/census2010/B01003.csv")
+census2010.DP02=read.csv("http://www.stat.berkeley.edu/users/nolan/data/voteProject/census2010/DP02.csv")
+census2010.DP03=read.csv("http://www.stat.berkeley.edu/users/nolan/data/voteProject/census2010/DP03.csv")
+
+#remove unwanted columns from census data frames
+
+#note: corresponding data descriptions for each column recorded seperately due to length
+census2010.DP02 = census2010.DP02[,c("GEO.display.label","HC03_VC04","HC03_VC06","HC03_VC07","HC03_VC08","HC03_VC09","HC03_VC10","HC03_VC11","HC03_VC12","HC03_VC13","HC03_VC14","HC03_VC15","HC03_VC17","HC03_VC18","HC03_VC85","HC03_VC86","HC03_VC87","HC03_VC88","HC03_VC89","HC03_VC90","HC03_VC91","HC03_VC129","HC03_VC130","HC03_VC131","HC03_VC132","HC03_VC133","HC03_VC134","HC01_VC84","HC01_VC85","HC01_VC86","HC01_VC87","HC01_VC88","HC01_VC89","HC01_VC90","HC01_VC91","HC01_VC128","HC01_VC129","HC01_VC130","HC01_VC131","HC01_VC132","HC01_VC133","HC02_VC134")]
+
+
+census2010.DP03 = census2010.DP03[,c("GEO.display.label","HC03_VC05","HC03_VC13","HC03_VC75","HC03_VC76","HC03_VC77","HC03_VC78","HC03_VC79","HC03_VC80","HC03_VC81","HC03_VC82","HC03_VC83","HC03_VC84","HC01_VC85","HC03_VC156","HC01_VC04","HC01_VC05","HC01_VC06","HC01_VC07","HC01_VC08","HC01_VC10","HC01_VC74","HC01_VC75","HC01_VC76","HC01_VC77","HC01_VC78","HC01_VC79","HC01_VC80","HC02_VC81","HC01_VC82","HC01_VC83","HC01_VC84")]
+#merge data frames with similar formatting
+c2010df = merge(census2010.DP02, census2010.DP03, by = "GEO.display.label", all = TRUE)
+
+#convert data frame from fist census source to a matching format
+census2010.B01003 = census2010.B01003[c(census2010.B01003$POPGROUP.id==1),c(3,6)]
+
+#merge to create data frame from all three census sources
+c2010df = merge(census2010.B01003, c2010df, by = "GEO.display.label", all = TRUE)
+
+#remove all the NAs from the c2010df
+c2010df= na.omit(c2010df)
+
+#split state and county names
+sc2010 = strsplit(as.character(c2010df[ ,1]), ",")
+s2010 = sapply(sc2010, "[", 2)
+c2010 = sapply(sc2010, "[", 1)
+scdf = data.frame(s2010,c2010)
+
+#add separate state and county names to census data frame and remove conjoined names
+c2010df = data.frame(scdf, c2010df[,-1])
+c2010df[,2] = as.character(c2010df[,2])
+c2010df[,1] = as.character(c2010df[,1])
+
+#convert state names to abbreviations 
+c2010df$s2010 = tolower(c2010df$s2010)
+c2010df$s2010 = sapply(c2010df$s2010, trimws)
+a=match(c2010df$s2010,stateMap[,1])
+c2010df[,1]=stateMap[a,2]
+
+#standardizing county names for merging
+
+c2010df$c2010 = sub(" (County|Parish|Municipio|Borough|Area|Census Area|city|Municipality|City and Borough)", "", c2010df$c2010)
+c2010df$c2010 = tolower(c2010df$c2010)
+
+names(c2010df)[c(1,2)]= c("State", "County")
+
+c2010df$County = gsub("[.|'| ]", "", c2010df$County)
+
+
+
+#6 longtidue and latitude
+# Sixth source was done by Chase and Yizhuang
+
+require(igraph)
+
+lonlatitude=xmlParse("http://www.stat.berkeley.edu/users/nolan/data/voteProject/counties.gml")
+
+root=xmlRoot(lonlatitude)
+
+#get list of  county names
+county = unlist(lapply(xmlSApply(getNodeSet(root,"//gml:name[not(@abbreviation)]"), xmlValue, "gml:name"), trimws))
+
+#get lists of coordinates
+longitude= unlist(lapply(xmlSApply(getNodeSet(root,"//gml:X"), xmlValue, "gml:X"), trimws))
+latitude = unlist(lapply(xmlSApply(getNodeSet(root, "//gml:Y"), xmlValue, "gml:X"), trimws))
+
+#get list of state names (in alphabetical order)
+statenames = unlist(lapply(xmlSApply(getNodeSet(root,"//gml:name[@abbreviation]"), xmlAttrs, "gml:name"), trimws))
+
+#get list containing county count by state (in alphabetical order)
+counts = xpathSApply(root, "//state", xmlSize)-1
+
+#create list of state names repeated the same number of times as the number of counties in that state
+states6 = rep(statenames, times = counts)
+
+#combine data into data frame
+lonlatitude.dataframe = data.frame(State = states6, County = county, Longitude = longitude, Latitude = latitude, stringsAsFactors = FALSE)
+
+lonlatitude.dataframe[,2] = sub(" (County|Parish|Borough|Area|Census Area|city)", "", lonlatitude.dataframe[,2])
+lonlatitude.dataframe[,2] = tolower(lonlatitude.dataframe[,2])
+lonlatitude.dataframe$County = gsub("[.|'| ]", "", lonlatitude.dataframe$County)
+
+#merging and cleaning (which we will want to move to formation of dataframes)
+# The merging part was done by Chase, Judiel, Rick, Yizhuang, Jingyu.
+
+
+
+# merge dataframe sc2010 and 2016 (datasources 1 and 2)
+bigDF = merge(dataframe2016, dataframe2012, by = c("State", "County"), all = TRUE)
+# merge bigDF with dataframe2008 (datasource 3)
+bigDF = merge(bigDF, dataframe2008, by = c("State", "County"), all = TRUE)
+# merge dataframe with dataframe2004 (datasource 4)
+bigDF = merge(bigDF, dataframe2004, by = c("State", "County"), all = TRUE)
+bigDF$State=as.character(bigDF$State)
+# merge dataframe with c2010df (datasource 5 the census part)
+bigDF = merge(bigDF, c2010df, by = c("State", "County"), all = TRUE)
+# merge dataframe with longlatitude.dataframe (datasource 6 the lontitude and latitude)
+bigDF=merge(bigDF, lonlatitude.dataframe, c("State","County"), all = TRUE)
+
+#remove all the Alaska results
+#Final big data frame
+bigDF=bigDF[34:3201, ]
+rownames(bigDF)=1:nrow(bigDF)
+
+
+
+bigDF[,5]=as.numeric(gsub(",| ","",bigDF[,5]))
+bigDF[,6]=as.numeric(gsub(",","",bigDF[,6]))
+bigDF[,7]=as.numeric(gsub(",","",bigDF[,7]))
+bigDF[,8]=as.numeric(gsub(",","",bigDF[,8]))
+bigDF[,9]=as.numeric(gsub(",","",bigDF[,9]))
+bigDF[,10]=as.numeric(gsub(",","",bigDF[,10]))
+
+save(bigDF,file = "bigDF.rda")
+```
+
+Step 5. Final Report
+
+1. Introduction
+
+The goal of this project was to analyze past election results data and attempt to draw meaningful conclusions and correlations from exploring the aforementioned data.
+
+Our data came from six distinct sources with four sources accounting for each of the vote results for a given election year (2004, 2008, 2012, 2016), 2010 census data for all counties, and latitude and longitude values for every county as well. After extracting the data from all the sources, they were merged into a larger dataframe using R. This activity presented several challenges such as the absence of data for some years. For example, the 2004 election year lacked data for the state of Virginia, among others. Further, the merging of the data occured on (state, countyname) pairs which presented challenges that involved standardizing disparate uses names between different counties.
+
+Exploratory data analysis was performed on the data in order to find interesting relationships across years and based on the counties 2010 census attributes. The plots and exact relationships uncovered are elaborted at length below. In particular, an informative map of the recent election results is included.
+
+In an attempt to use the gathered data in a predictive sense, our team created two predictors using two separate methods: recursive partitioning and k-nearest neighbors. The recursive partitioning predictor was used for the 2016 election results and the k-nn predictor was trained on the 2012 results and tested on the 2016 election results. A more elaborate comparison of where the particulars did well and how they compared to each other follows.
+
+Note: Since we used "installXLSXsupport()" to read xlsx file. Your computer need to have java and perl to fully see our data frame
+
+2. Data Description
+
+The first plot that was created to explore the final set of data was a plot of the percentage of Democratic votes for each state for each given election year. From the plot, we can assume that the party had the majority votes(more than 50%) won the state. In 2004, Democrat wins 27 states, in 2008 and 2012 Democrat won 22 states, and in 2016, Democrat won 16 states. Based on history, the 2004 and 2016 elected president was both Republican. However, Democrat won the 2004 votes state-wise but lost in 2016. Therefore, our assumption is not correct all the time.
+
+This emphasizes the importance of winning the necessary amount of electoral votes through winning the appropriate counties. The reason our team found this data and finding interesting in terms of the elections of the past 4 years is because we believe it highlights a rhetoric often discussed about the electoral system in America. That is, does the electoral system in America underrepresent the governing bodies of the state in favor of winning incredibly populous counties. The concern is the diminishment of the value of less populous state opinions, which are often mostly cohesive. After all, it can be seen from the plot that the presidency can be won without a majority of the states such as in 2004, 2008, and 2012.
+
+Note that Virginia, DC, and Hawaii were removed in the creation of this plot because of a lack of 2004 election data.
+
+```{r, message=FALSE, warning=FALSE}
+require(ggplot2)
+
+# democrate votes change in 4 elections
+plot1dataframe= bigDF[,seq(1:10)]
+names(plot1dataframe)=c("A","B", "C", "D","E","F","G","H","I","J")
+
+total.de.2016 = aggregate(C~A, plot1dataframe, sum)
+total.re.2016 = aggregate(D~A, plot1dataframe, sum)
+total.de.2012 = aggregate(E~A, plot1dataframe, sum)
+total.re.2012 = aggregate(F~A, plot1dataframe, sum)
+total.de.2008 = aggregate(G~A, plot1dataframe, sum)
+total.re.2008 = aggregate(H~A, plot1dataframe, sum)
+total.de.2004 = aggregate(I~A, plot1dataframe, sum)
+total.re.2004 = aggregate(J~A, plot1dataframe, sum)
+
+
+total.de.2016 = total.de.2016[!total.de.2016$A %in% c("DC", "HI", "VA"),]
+total.re.2016 = total.re.2016[!total.re.2016$A %in% c("DC", "HI", "VA"),]
+total.de.2012 = total.de.2012[!total.de.2012$A %in% c("DC", "HI", "VA"),]
+total.re.2012 = total.re.2012[!total.re.2012$A %in% c("DC", "HI", "VA"),]
+total.de.2008 = total.de.2008[!total.de.2008$A %in% c("DC", "HI", "VA"),]
+total.re.2008 = total.re.2008[!total.re.2008$A %in% c("DC", "HI", "VA"),]
+total.de.2004 = total.de.2004[!total.de.2004$A %in% c("DC", "HI", "VA"),]
+total.re.2004 = total.re.2004[!total.re.2004$A %in% c("DC", "HI", "VA"),]
+
+countsplot1= data.frame(total.de.2016,total.de.2012,total.de.2008,total.de.2004,total.re.2016,total.re.2012,total.re.2008,total.re.2004)
+countsplot1=countsplot1[-seq(from=3, to=16,by=2)]
+names(countsplot1)=c("State", "2016 dem Votes", "2012 dem Votes", "2008 dem Votes", "2004 dem Votes","2016 rep Votes", "2012 rep Votes", "2008 rep Votes", "2004 rep Votes")
+countsplot1$'2016 total' = countsplot1$`2016 dem Votes` + countsplot1$`2016 rep Votes`
+countsplot1$'2012 total' = countsplot1$`2012 dem Votes` + countsplot1$`2012 rep Votes`
+countsplot1$'2008 total' = countsplot1$`2008 dem Votes` + countsplot1$`2008 rep Votes`
+countsplot1$'2004 total' = countsplot1$`2004 dem Votes` + countsplot1$`2004 rep Votes`
+
+step1 = cbind(countsplot1[,c(1,2,10)],data.frame(rep(2016, nrow(countsplot1))))
+step2 = cbind(countsplot1[,c(1,3,11)],data.frame(rep(2012, nrow(countsplot1))))
+step3 = cbind(countsplot1[,c(1,4,12)],data.frame(rep(2008, nrow(countsplot1))))
+step4 = cbind(countsplot1[,c(1,5,13)],data.frame(rep(2004, nrow(countsplot1))))
+demTotal1 = cbind(step1[,1], data.frame(step1[,2]/step1[,3]),step1[,4])
+demTotal2 = cbind(step2[,1], data.frame(step2[,2]/step2[,3]),step2[,4])
+demTotal3 = cbind(step3[,1], data.frame(step3[,2]/step3[,3]),step3[,4])
+demTotal4 = cbind(step4[,1], data.frame(step4[,2]/step4[,3]),step4[,4])
+names(demTotal1) = c("State", "PerDem", "Year")
+names(demTotal2) = c("State", "PerDem", "Year")
+names(demTotal3) = c("State", "PerDem", "Year")
+names(demTotal4) = c("State", "PerDem", "Year")
+newDF = rbind(demTotal1,demTotal2,demTotal3,demTotal4)
+plot1=ggplot(data=newDF, aes(x=State, y = PerDem, fill=factor(Year))) + geom_bar(stat="identity", position="dodge")+geom_hline(aes(yintercept=0.5)) + guides(fill=guide_legend(title="Year")) + labs(title="Percentage Democratic Vote in 4 Elections by State", y = "Democratic Vote Percentage")
+plot1
+```
+
+Our group wanted to see how wealthy is going to affect voting preferences. So we examed the top 20 counties wealthiest counties by our metric. To calculate the wealth level for a given county, we leveraged the 2010 census data. The 2010 census data includes population counts for people in various income brackets. The wealth number for a county was calculated taking the total percentage of residents occupying the lowest income bracket on the census (less than $10,000) subtracted by the total percantage of residents occupying the highest income bracket on the census (greater than $200,000). If the number for a county was negative, it indicated a predominantly wealthy county. The converse of the prior statement is also true.
+
+After finding the top 20 wealthiest counties by this metric, we analyzed the vote numbers for these counties for the election years 2012 and 2016 to see how they voted. Our results were that 15 of the counties voted Democrat and 5 voted Republican. Still, the results are mostly obersvational and merely describe a correlation. It could be the fact that most of the states of the counties represent often vote in such a direction. That is, it is unsurprising that the California counties included in the results voted Democrat or that the Texas counties voted Republican, regardless of their score on our team's wealth metric. 
+
+In fact, perhaps the most interesting result stems from observing the dataframe itself. When analyzing the top 20 wealthy counties that cast a vote separate from the way their state voted in the elections, we observe that more counties cast a vote for the Republican candidate, particularly in the counties of New Jersey. This may indicate that despite the results of the plot below, wealthy counties may actually correlate towards voting Republican even in predominantly Democratic states.
+
+```{r, message=FALSE, warning=FALSE}
+# Voting Preferences if Wealthy Counties from 2012 and 2016
+incomeDF2012= bigDF[,c("State","County","HC01_VC74","HC01_VC75","HC01_VC84.y","2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes", "2012 Democrat Votes")]
+incomeDF2012=incomeDF2012[c(-2878,-2875,-2876),]
+names(incomeDF2012)=c("State","County","total","less","more","rep2016","dem2016", "rep2012", "dem2012")
+incomeDF2012$less= incomeDF2012$less/ incomeDF2012$total
+incomeDF2012$more= incomeDF2012$more/ incomeDF2012$total
+incomeDF2012$diff= incomeDF2012$less - incomeDF2012$more
+incomeDF2012 = incomeDF2012[c(order(incomeDF2012$diff)),]
+refinedDF2012= head(incomeDF2012,n=28)
+
+refinedDF2012 = refinedDF2012[refinedDF2012$County!='fairfax',]
+refinedDF2012 = refinedDF2012[c(-1),]
+
+refinedDF2012$voted2012 = refinedDF2012$rep2012 > refinedDF2012$dem2012
+refinedDF2012$voted2012[refinedDF2012$voted2012 == FALSE] = 'Democrat'
+refinedDF2012$voted2012[refinedDF2012$voted2012 == TRUE] = 'Republican'
+refinedDF2012$voted2016 = refinedDF2012$rep2016 > refinedDF2012$dem2016
+refinedDF2012$voted2016[refinedDF2012$voted2016 == FALSE] = 'Democrat'
+refinedDF2012$voted2016[refinedDF2012$voted2016 == TRUE] = 'Republican'
+
+
+plot2DF = data.frame(as.factor(c(2016,2016,2012,2012)), c(length(grep("Democrat",refinedDF2012$voted2016)),length(grep("Republican",refinedDF2012$voted2016)),length(grep("Democrat",refinedDF2012$voted2012)),length(grep("Republican",refinedDF2012$voted2012))),c('Democrat','Republican','Democrat','Republican'))
+names(plot2DF) = c("Year", "Count", "Party")
+plot2=ggplot(data=plot2DF, aes(x=Year, y=Count, fill=Party)) + geom_bar(stat="identity", position="dodge")+ggtitle("Voting Preferences of Wealthy Counties from 2012 and 2016")+scale_fill_manual(values = c(Democrat="blue",Republican="red"))
+plot2
+
+```
+
+In plot 3, our team tried to find the relationship between percentage of 2012 votes and percentage of unemployment rate by county.
+We first make a data frame “employmentDF” by using our primary dataframe bigDF by picking up employment status “HC01_VC06, HC01_VC07, HC01_VC08”, "2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes" and “2012 Democrat Votes" to implement our data analysis.  
+ Right next, our team added three elements to the data frame “unem.rate.2012, dem.per.2012 and rep.per.2012”, which stand for unemployment rate(use formula unemployed population/ total population), percentage of democrats voters and percentage of republican voters for year 2016 and 2012. “winner.per.2012” element in the dataframe stands for the winner of election year 2012. Also, we basically follow the same step for election year 2016. 
+We decided to make a scatter plots because each jitter point with different color will better represent votes of each county of interest. We decide to compare scatter plots of 2016 and 2012 to draw a conclusion. In each graph, every county is a point, x is percentage of democrats or republican votes of a specific county, y is unemployment rate of the county, grouping is color by “total.per.2012”, which is the percentage of democrats votes – percentage of republican votes.  
+2 plots displayed similar distribution of the colored dot. Red dot, representing county where republic wins over democrats, are concentrated on middle and right region of graph. Blue color dot, representing county where democrats wins , are concentrated on the left region of graph.
+
+
+```{r, message=FALSE, warning=FALSE}
+# unemplo vs employed   
+# HC01_VC06,Estimate; EMPLOYMENT STATUS - In labor force - Civilian labor force
+# HC01_VC07,Estimate; EMPLOYMENT STATUS - In labor force - Civilian labor force – Employed
+# HC01_VC08,Estimate; EMPLOYMENT STATUS - In labor force - Civilian labor force – Unemployed
+employmentDF = bigDF[,c("State","County","HC01_VC06","HC01_VC07","HC01_VC08","2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes", "2012 Democrat Votes")]
+names(employmentDF) = c("State","County", "Total","Employed","Unemployed","2016 rep","2016 dem","2012 rep","2012 dem")
+employmentDF$unem.rate = employmentDF$Unemployed / employmentDF$Total
+employmentDF$dem.per.2012 = employmentDF$`2012 dem`/(employmentDF$`2012 dem` + employmentDF$`2012 rep`)
+employmentDF$rep.per.2012 = employmentDF$`2012 rep`/(employmentDF$`2012 dem` + employmentDF$`2012 rep`)
+# positive value indicates democratic vote, negative value indicates republican vote
+# magnitude is the severity of the victory
+employmentDF$total.per.2012 = employmentDF$dem.per.2012 - employmentDF$rep.per.2012
+# has the percentage value of the winner
+employmentDF$winner.per.2012 = pmax(employmentDF$dem.per.2012, employmentDF$rep.per.2012)
+employmentDF$dem.per.2016 = employmentDF$`2016 dem`/(employmentDF$`2016 dem` + employmentDF$`2016 rep`)
+employmentDF$rep.per.2016 = employmentDF$`2016 rep`/(employmentDF$`2016 dem` + employmentDF$`2016 rep`)
+# positive value indicates democratic vote, negative value indicates republican vote
+# magnitude is the severity of the victory
+employmentDF$total.per.2016 = employmentDF$dem.per.2016 - employmentDF$rep.per.2016
+# has the percentage value of the winner
+employmentDF$winner.per.2016 = pmax(employmentDF$dem.per.2016, employmentDF$rep.per.2016)
+
+
+# scatterplot, every county is a point, x is % dem/rep vote, y is unemployment rate, grouping is color by dem/rep vote?
+#2012
+ggplot(data=employmentDF) + geom_point(mapping = aes(x = winner.per.2012, y = unem.rate, color = total.per.2012)) + xlab("% 2012 Vote") + ylab("Unemployment Rate - Civillian labor force") + ggtitle("% of 2012 Vote and Unemployment Rate by County") + theme(plot.title = element_text(face="bold")) + scale_colour_gradient2(name="Winning % of Total Votes ",low="#E91D0E", mid="seashell4",  high="#336699", midpoint = 0)
+#2016
+ggplot(data=employmentDF) + geom_point(mapping = aes(x = winner.per.2016, y = unem.rate, color = total.per.2016)) + xlab("% 2016 Vote") + ylab("Unemployment Rate - Civillian labor force") + ggtitle("% of 2016 Vote and Unemployment Rate by County") + theme(plot.title = element_text(face="bold")) + scale_colour_gradient2(name="Winning % of Total Votes ",low="#E91D0E", mid="seashell4",  high="#336699", midpoint = 0)
+```
+
+In plot 4, our team tried to find difference between native voters and non-native voters by county. And we compare this in two election years, 2016 and 2012. 
+And we compare this relationship in two election years, 2016 and 2012. We first make a dataframe “birthDF” by using our primary dataframe “bigDF” and picking up residency and birth status “HC01_VC128, HC01_VC129 HC02_VC134”, "2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes" and “2012 Democrat Votes" to implement our data analysis.
+Each year, we first calculate percentage of votes of each party by county. We sort winner party by using “pmax”  function on the comparison of percentage of democrats votes and republican votes. And in the graph, republican-win county is represented by red dot and democrats-win county are represented by blue dot.  We basically follow the same step for 2 election tears.
+We decided to make a scatter plots because each jitter point with different color will better represent votes of each county of interest. Apparently it we can tell by how much more votes approximately a party wins over the other party in each election within county. We decide to compare scatter plots of 2016 and 2012 to draw a conclusion. In each graph, every county is a point, x is by how many percent of votes a party win over the others, y foreign born voters percentage of county, grouping is color by “total.per.2012 and total.per.2016”, which is the percentage of democrats votes minors percentage of republican votes in 2 election years.
+2 plots displayed similar distribution of the colored dot. Red dot, representing county where republic wins over democrats, are concentrated on middle and right region of graph. Blue color dot, representing county where democrats wins, are concentrated on the left region of graph.
+In 2 election years, scatters are both staying majorly at the bottom. It could be because of the fact the non-native voter’s population percentage are fairly low in each county. Or maybe voting right are primarily reserved to native American voters. Interestingly, outliers with higher non-native vote rate are largely republican-win county.
+
+
+```{r, message=FALSE, warning=FALSE}
+# native vs non-native
+# HC01_VC128,Estimate; PLACE OF BIRTH - Total population
+# HC01_VC129,Estimate; PLACE OF BIRTH – Native
+# HC01_VC130,Estimate; PLACE OF BIRTH - Native - Born in United States
+  
+birthDF = bigDF[,c("State","County","HC01_VC128","HC01_VC129","HC02_VC134","2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes", "2012 Democrat Votes")]
+names(birthDF) = c("State","County", "Total","Native","Fborn","2016 rep","2016 dem","2012 rep","2012 dem")
+birthDF$fborn.rate= birthDF$Fborn/ birthDF$Total
+
+birthDF$dem.per.2012 = birthDF$`2012 dem`/ (birthDF$`2012 dem`+ birthDF$`2012 rep`)
+birthDF$rep.per.2012 = birthDF$`2012 rep`/ (birthDF$`2012 dem`+ birthDF$`2012 rep`)
+birthDF$dem.per.2016 = birthDF$`2016 dem`/ (birthDF$`2016 dem`+ birthDF$`2016 rep`)
+birthDF$rep.per.2016 = birthDF$`2016 rep`/ (birthDF$`2016 dem`+ birthDF$`2016 rep`)
+
+birthDF$total.per.2012 = birthDF$dem.per.2012 - birthDF$rep.per.2012
+
+birthDF$winner.per.2012 = pmax(birthDF$dem.per.2012, birthDF$rep.per.2012)
+
+birthDF$total.per.2016 = birthDF$dem.per.2016 - birthDF$rep.per.2016
+# has the percentage value of the winner
+birthDF$winner.per.2016 = pmax(birthDF$dem.per.2016, birthDF$rep.per.2016)
+#2012
+
+ggplot(data=birthDF) + geom_point(mapping = aes(x = winner.per.2012, y = fborn.rate, color = total.per.2012)) + xlab("% 2012 Vote") + ylab("Foreign Born Voters Percentage") + ggtitle("% of 2012 Vote and Foreign Born Voters by County") + theme(plot.title = element_text(face="bold")) + scale_colour_gradient2(name="Winning % of Total Votes ",low="#E91D0E", mid="seashell4",  high="#336699", midpoint = 0)
+
+#2016
+ggplot(data=birthDF) + geom_point(mapping = aes(x = winner.per.2016, y = fborn.rate, color = total.per.2016)) + xlab("% 2016 Vote") + ylab("Foreign Born Voters Percentage") + ggtitle("% of 2016 Vote and Foreign Born Voter by County") + theme(plot.title = element_text(face="bold")) + scale_colour_gradient2(name="Winning % of Total Votes ",low="#E91D0E", mid="seashell4",  high="#336699", midpoint = 0)
+
+```
+In plot 5, our team tried to find how under-high-school degree voters differ from bachelor degree voters by county. And we compare this in two election years, 2016 and 2012. 
+And we compare this relationship in two election years, 2016 and 2012. We first make a dataframe “educationDF” by using our primary dataframe “bigDF” and picking up "State","County","Total Under-high-school and Bachelor population", "Under-high-school population ","Bachelor population""2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes" and  "2012 Democrat Votes" to implement our data analysis.
+In each county, we calculate proportion of under-high-school voters and bachelor degree voters in each county.
+Each year, we first calculate percentage of votes of each party by county. We sort winner party by using “pmax”  function on the comparison of percentage of democrats votes and republican votes. And in the graph, republican-win county is represented by red dot and democrats-win county are represented by blue dot.  We basically follow the same step for 2 election tears. 
+Every county is a point, x is by how many percent of votes a party win over the others, y percentage of under-high-school voters or percentage of bachelor-degree voters, grouping is color by “total.per.2012 and total.per.2016”, which is the percentage of democrats votes minors percentage of republican votes in 2 election years.Red dot, representing county where republic wins over democrats, are concentrated on middle and right region of graph. Blue color dot, representing county where democrats wins, are concentrated on the left region of graph.
+In comparison between percentage of under-high-school voters and bachelor degree voters of 2012, we can’t draw any conclusion for democrats-win county, for scatters of which stay in similar region. For republican-win county, there are more higher scatters on graph with bachelor degree compared to graph with under-high-school. Conclusion can be made that high education voters are more in favor of republican. Whereas at 2016, there’re more proportion of under-high-school in republican-win county.
+
+```{r, message=FALSE, warning=FALSE}
+
+# 9-12 vs bachelor dooooone
+
+educationDF = bigDF[,c("State","County","HC01_VC84.x","HC01_VC86","HC01_VC90","2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes", "2012 Democrat Votes")]
+names(educationDF) = c("State","County", "Total","Underhighschool","Bachelor","2016 rep","2016 dem","2012 rep","2012 dem")
+
+educationDF$underhighschool.rate= educationDF$Underhighschool/ educationDF$Total
+educationDF$bachelor.rate= educationDF$Bachelor/ educationDF$Total
+
+educationDF$dem.per.2012 = educationDF$`2012 dem`/ (educationDF$`2012 dem`+ educationDF$`2012 rep`)
+educationDF$rep.per.2012 = educationDF$`2012 rep`/ (educationDF$`2012 dem`+ educationDF$`2012 rep`)
+educationDF$dem.per.2016 = educationDF$`2016 dem`/ (educationDF$`2016 dem`+ educationDF$`2016 rep`)
+educationDF$rep.per.2016 = educationDF$`2016 rep`/ (educationDF$`2016 dem`+ educationDF$`2016 rep`)
+
+educationDF$total.per.2012 = educationDF$dem.per.2012 - educationDF$rep.per.2012
+educationDF$winner.per.2012 = pmax(educationDF$dem.per.2012, educationDF$rep.per.2012)
+educationDF$total.per.2016 = educationDF$dem.per.2016 - educationDF$rep.per.2016
+# has the percentage value of the winner
+educationDF$winner.per.2016 = pmax(educationDF$dem.per.2016, educationDF$rep.per.2016)
+
+#2012 9-12 grade
+ggplot(data=educationDF) + geom_point(mapping = aes(x = winner.per.2012, y = underhighschool.rate, color = total.per.2012)) + xlab("% 2012 Vote") + ylab("No Diploma Voters Percentage") + ggtitle("% of 2012 Vote by County by People with No Diploma") + theme(plot.title = element_text(face="bold")) + scale_colour_gradient2(name="Winning % of Total Votes ",low="#E91D0E", mid="seashell4",  high="#336699", midpoint = 0)
+
+#2016 9-12 grade
+ggplot(data=educationDF) + geom_point(mapping = aes(x = winner.per.2016, y = underhighschool.rate, color = total.per.2016)) + xlab("% 2016 Vote") + ylab("No Diploma Voters Percentage") + ggtitle("% of 2016 Vote by County by People with No Diploma") + theme(plot.title = element_text(face="bold")) + scale_colour_gradient2(name="Winning % of Total Votes ",low="#E91D0E", mid="seashell4",  high="#336699", midpoint = 0)
+
+#2012 bachelor degree
+ggplot(data=educationDF) + geom_point(mapping = aes(x = winner.per.2012, y = bachelor.rate, color = total.per.2012)) + xlab("% 2012 Vote") + ylab("No Diploma Voters Percentage") + ggtitle("% of 2012 Vote by County by People with Bachelor Degree") + theme(plot.title = element_text(face="bold")) + scale_colour_gradient2(name="Winning % of Total Votes ",low="#E91D0E", mid="seashell4",  high="#336699", midpoint = 0)
+
+#2016 bachelor degree
+ggplot(data=educationDF) + geom_point(mapping = aes(x = winner.per.2016, y = bachelor.rate, color = total.per.2016)) + xlab("% 2016 Vote") + ylab("No Diploma Voters Percentage") + ggtitle("% of 2016 Vote by County by People with Bachelor Degrees") + theme(plot.title = element_text(face="bold")) + scale_colour_gradient2(name="Winning % of Total Votes ",low="#E91D0E", mid="seashell4",  high="#336699", midpoint = 0)
+
+```
+
+In plot 6, our team wanted to compare total votes in 4 election years. We decide to use line plot because it will directly show the number of votes change in 4 elections for both parties. 
+We first make a dataframe “educationDF” by using our primary dataframe “partyDF” and subset "State","County","2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes", "2012 Democrat Votes", "2008 McCain Votes", "2008 Obama Votes", "2004 Bush Votes", "2004 Kerry Votes" from our original dataframe “bigDF”. In addition, we add a new dataframe called “newpartyDF” by summing up total votes of democrats and republican in 4 years. And we drop all NA data. Also, we calculate total vote number of each year.
+ We use out newpartyDf to make our data frame. For first line plot, we set x as year of election, y as total number of votes and color as “democrats”. For second line plot, we set x as year of election, y as total number of votes and color as “republican”.  We find that the total number of votes of 2008, 2012 and 2016 stays similar because that voting population remain the same in the passing 12 years. Furthermore, by insititution, we assume that whoever has more votes wins the election. In our plot, it states correct in 2004, 2008, 2012. However, in 2016, Democrat won more votes than Republican, and Donald Trump still wins the election, which overturned our assumption. Therefore, we know that more votes doesn't mean wining the election.  
+ 
+```{r, message=FALSE, warning=FALSE}
+
+  
+# Democrat Vs Republican
+partyDF = bigDF[,c("State","County","2016 Trump Votes","2016 Clinton Votes","2012 Republican Votes", "2012 Democrat Votes", "2008 McCain Votes", "2008 Obama Votes", "2004 Bush Votes", "2004 Kerry Votes")]
+names(partyDF) = c("State","County","2016 rep","2016 dem","2012 rep","2012 dem","2008 rep","2008 dem","2004 rep","2004 dem")
+
+newpartyDF = data.frame(c(sum(partyDF$`2016 dem`, na.rm=TRUE), sum(partyDF$`2012 dem`, na.rm=TRUE), sum(partyDF$`2008 dem`, na.rm=TRUE), sum(partyDF$`2004 dem`, na.rm=TRUE)), c(sum(partyDF$`2016 rep`, na.rm=TRUE), sum(partyDF$`2012 rep`, na.rm=TRUE), sum(partyDF$`2008 rep`, na.rm=TRUE), sum(partyDF$`2004 rep`, na.rm=TRUE)), factor(c(2016,2012,2008,2004)))
+newpartyDF$Total = newpartyDF[,1] + newpartyDF[,2]
+names(newpartyDF) = c("Total Democrat Votes", "Total Republican Votes", "Year", "Total")
+
+ggplot(data=newpartyDF,aes(group=1))+ geom_line(aes( x = newpartyDF$Year, y =newpartyDF$`Total Democrat Votes`,colour='Democrat')) +geom_line(aes( x = newpartyDF$Year, y =newpartyDF$`Total Republican Votes`,colour='Republican')) +labs(title= "Total Votes Of Both Parties in 4 Elections", x= "Year", y= "Votes")+scale_colour_manual("", breaks = c("Democrat", "Republican"),values = c("blue", "red"))+geom_point(aes(x=newpartyDF$Year, y=newpartyDF$`Total Democrat Votes`), color='blue')+geom_point(aes(x=newpartyDF$Year, y=newpartyDF$`Total Republican Votes`), color='red')
+
+
+```
+
+3. Map
+
+For the election map, our group is trying to draw the proportion of voting in different county. By using base R graphing,we use the longitude and latitude from data frame to identify each county location.  We extract state names, county names, longitude, latitude and 2016 votes for Clinton and Trump. We omit all NA in the data and calculate the total vote from each county. At the beginning, we draw the pie graphs for each county that have portion of Clinton's vote and trump's votes, and the radius of each pie graph is depending on the number of total vote for each county. However, some counties have so little vote that radius tends to be zero, and become black little dot.  Hence, we want to delete those counties votes if they have too little portion in their states. We use dglyr library to group all the vote by state. Since the votes are distributing according to the portion in each state, we group the vote by different state, and calculate the portion of vote from each county in the state. Since there are so many small counties, we only take the voting data from counties that have more than 5 percent total number of votes of their states.
+
+```{r, message=FALSE, warning=FALSE}
+library(maps)
+library(mapdata)
+library(mapplots)
+library(dplyr)
+library(scales)
+myDF=bigDF[,c(1,2,3,4,84,85)]
+myDF=na.omit(myDF)
+myDF$votes=myDF[,3]+myDF[,4]
+vote= group_by (myDF,State)
+vote=summarise(vote, totalvote=sum(votes))
+vote1=left_join (myDF,vote,by="State") 
+vote1$percentVote=vote1$votes/vote1$totalvote
+votefinal=vote1[vote1$percentVote>=0.05,]
+ClinVote=as.numeric(votefinal[,3])
+TrumVote=as.numeric(votefinal[,4])
+z=array(c(abs(ClinVote/(ClinVote+TrumVote)),abs(TrumVote/(ClinVote+TrumVote))))
+z=matrix(z,ncol=2,byrow=TRUE)
+map("state", col="gray95", fill=TRUE)
+points(votefinal$Longitude, votefinal$Latitude)
+text(x= votefinal$Longitude, votefinal$Latitude,labels = votefinal$County, pos=4)
+draw.pie(z=z,x=as.numeric(votefinal$Longitude)/1000000,y=as.numeric(votefinal$Latitude)/1000000,radius=sqrt(ClinVote+TrumVote)/500, col=c(alpha("blue",0.6), alpha("red",0.6)))
+
+
+```
+
+4. predicting the 2016 result (Made by Chase Humiston)
+Method Use building regression line predict 2016 election results.
+
+Our group recombined the data frame with all different group of people's votes, such as the people with high level of education, native people, and so on. We use those specific group of people so that the prediction of data will be more accurate. We set up the seed to generate random number, and put them in matrix as folds. To have less error in the predictor, we tried different cp values.  By taking all columns except for the actual vote in column three, we use for loop and rpart function to generate and predict the data for each cp value. We apply the function on each prediction data set and find out the the ones that have sum more than 0.5.  
+
+Then, we select the maximum cpr value to use for the actual prediction to be more precise.  We draw a plot with cps and cpr values to figure our the relations between them. Using exactly the same steps, we redo the previous steps with different ranges of cp values.  Then, we draw the plot again for relations between cps and cpr. Looking at the plot, we find out when cp value is 0.0008, we have maximum of correct prediction rate. By looking at both the plot and the table, we see that when cp value is 0.0008, the error percentage is 0.17177 which means we predict 0.82823 correct. 
+```{r, message=FALSE, warning=FALSE}
+# Building a regression tree
+meddf = bigDF[,c("State","County","2016 Clinton Votes","2016 Trump Votes","HC03_VC04","HC03_VC06","HC03_VC07","HC03_VC08","HC03_VC09","HC03_VC10","HC03_VC11","HC03_VC12","HC03_VC13.x","HC03_VC14","HC03_VC15","HC03_VC17","HC03_VC18","HC03_VC85","HC03_VC86","HC03_VC87","HC03_VC88","HC03_VC89","HC03_VC90","HC03_VC91","HC03_VC129","HC03_VC130","HC03_VC131","HC03_VC132","HC03_VC133","HC03_VC134","HC03_VC05","HC03_VC13.y","HC03_VC75","HC03_VC76","HC03_VC77","HC03_VC78","HC03_VC79","HC03_VC80","HC03_VC81","HC03_VC82","HC03_VC83","HC03_VC84","HC01_VC85.y","HC03_VC156","Longitude","Latitude")]
+meddf[,-(1:2)] = sapply(meddf[,-(1:2)],as.numeric)
+meddf = meddf[complete.cases(meddf),]
+meddf$State = as.factor(meddf$State)
+pred2016 = data.frame("repvotes" = meddf[,4]/(meddf[,3]+meddf[,4]), meddf[,-(3:4)])
+
+
+#separate predictor build and test data
+set.seed(98070320)
+npred = nrow(pred2016)
+splitset = sample(npred, size = round(npred * .9, -1), replace = FALSE)
+testset = pred2016[-splitset, ]
+buildset = pred2016[splitset, ]
+
+#create folds matrix
+nbuild = nrow(buildset)
+permuteIndices = sample(nbuild)
+folds = matrix(permuteIndices, ncol = 10)
+
+#cp value vector
+cps = c(seq(0.0001, 0.001, by = 0.0001), 
+       seq(0.001, 0.01, by = 0.001),
+       seq(0.01, 0.1, by = 0.01))
+
+#prediction matrix
+preds = matrix(nrow = nbuild, ncol = length(cps))
+tree = list()
+
+require(rpart)
+
+#build tree
+for (i in 1:10) {
+  buildfold = folds[, -i]
+  testfold = folds[, i]
+  
+  for (j in 1:length(cps)) {
+    tree[[j]] = rpart( repvotes ~ .,
+            data = buildset[buildfold, -(3)], 
+            method = "anova",
+            control = rpart.control(cp = cps[j]))
+    preds[testfold, j] = 
+      predict(tree[[j]], 
+              newdata = buildset[testfold, -c(1,3)],
+              type = "vector")
+  }
+}
+
+#use correct prediction rates to select cp value for predicor
+cpr = apply(preds, 2, function(oneSet) {
+  return(sum(c(oneSet>.5)==c(buildset[,1]>.5))/nbuild) 
+})
+
+which.max(cpr)
+
+cprdf = data.frame(cps, cpr)
+ggplot(data = cprdf, aes(x = cps, y = cpr)) +
+  geom_line() + 
+  labs(x = "Complexity Parameter", y = "Correct Prediction Rate")
+
+for(i in 1:10){
+  printcp(tree[[i]])
+}
+
+#build tree again with new cp range
+
+cps2 = c(seq(0.0005,0.0015,by = .0001))
+
+preds2 = matrix(nrow = nbuild, ncol = length(cps))
+tree2 = list()
+
+for (i in 1:10) {
+  buildfold = folds[, -i]
+  testfold = folds[, i]
+  
+  for (j in 1:length(cps)) {
+    tree2[[j]] = rpart( repvotes ~ .,
+            data = buildset[buildfold, -(3)], 
+            method = "anova",
+            control = rpart.control(cp = cps[j]))
+    preds2[testfold, j] = 
+      predict(tree2[[j]], 
+              newdata = buildset[testfold, -c(1,3)],
+              type = "vector")
+  }
+}
+
+cpr2 = apply(preds2, 2, function(oneSet) {
+  return(sum(c(oneSet>.5)==c(buildset[,1]>.5))/nbuild) 
+})
+
+which.max(cpr2)
+
+cprdf = data.frame(cps, cpr2)
+ggplot(data = cprdf, aes(x = cps, y = cpr2)) +
+  geom_line() + 
+  labs(x = "Complexity Parameter", y = "Correct Prediction Rate")
+
+for(i in 1:10){
+  printcp(tree2[[i]])
+}
+
+#chose cp = 0.0008
+tree3 = rpart(repvotes ~ .,
+                  data = buildset[,-3], 
+                  method = "anova",
+                  control = rpart.control(cp = 0.0008))
+   
+preds3 = predict(tree3, 
+              newdata = testset[ , -c(1,3)],
+              type = "vector")
+
+cpr3 = sum(c(preds3>.5)==c(testset[,1]>.5))/nrow(testset)
+
+
+printcp(tree3)
+
+```
+
+5. Predicting the change from 2012 to 2016 (Made by Judiel Salandanan and Rick Chen)
+
+Method Use KNN method to predict 2016 election data from 2012 election data.
+ First our team make  a new dataframe “knnDF” by subsetting “"State", "County","2016 Clinton Votes","2016 Trump Votes","2012 Democrat Votes","2012 Republican Votes", "Longitude", "Latitude", "HC01_VC90", "HC01_VC08", "HC01_VC83"” from our primary dataframe “bigDF”. "HC01_VC90", "HC01_VC08", "HC01_VC83" each stands for number of bachelor degree voters, unemployed voters and rich voters. 
+Later we organize our training set and test set. We make a training set dataframe called “trainingDF” by subseting longitude, latitude, employment, bachelor degree and wealth(rich) information of year 2012 from the “knnDF”. In contrast, our testset is made with the exact same information of year 2016. Later on, we use knn function of knn package to execute prediction. The result we get from prediction is a categorical vector with “republican” or “democrat”
+Moreover. We run with multiple values of k and plot accuracy for plotting part 5. The way to test accuracy of different k value is to compare the accuracy percent. From the youtube video where we learned how to use knn, it suggested us to take the value of squareroot of number of rows of our dataframe as the value of K. However, when we arbitrary choose different K values, some K values actually predict better than the K value youtube suggested. Futhermore, the prediction percentage we saw might not as good as it looks. There is a problem in machine learning called overfitting. Our team believe there is a reason on all the sources that suggest us to use the value of squareroot of number of rows of our dataframe as the value of K. The K value might not looks as fancy as other overfitting K values, but at least it is more precise. For K is the value of squareroot of number of rows of our dataframe, which in our case is 56, we have our accuracy percentage 0.8397702.
+
+By comparing our to predictions, we have 0.82823 for using 2016 results to predict 2016 election and 0.8397702 for using 2012 election results to predict 2016 election.
+
+```{r, message=FALSE, warning=FALSE}
+#KNN
+library(class)
+
+normalize <- function(x) {
+num <- x - min(x)
+denom <- max(x) - min(x)
+return (num/denom)
+}
+
+knnDF = bigDF[, c("State", "County","2016 Clinton Votes","2016 Trump Votes","2012 Democrat Votes","2012 Republican Votes", "Longitude", "Latitude", "HC01_VC90", "HC01_VC08", "HC01_VC83")]
+knnDF=na.omit(knnDF)
+names(knnDF) = c("State", "County", "dem.2016", "rep.2016", "dem.2012","rep.2012", "lon","lat", "bachelor", "unemployed","rich")
+knnDF$winner.2012 = factor(ifelse(knnDF$dem.2012 > knnDF$rep.2012, 1, 2), levels = c(1,2), labels = c("Democrat", "Republican"))
+knnDF$winner.2016 = factor(ifelse(knnDF$dem.2016 > knnDF$rep.2016, 1, 2), levels = c(1,2), labels = c("Democrat", "Republican"))
+knnDF[,7] = as.numeric(knnDF[,7])
+knnDF[,8] = as.numeric(knnDF[,8])
+knnDF[,9] = as.numeric(knnDF[,9])
+knnDF[,10] = as.numeric(knnDF[,10])
+knnDF[,11] = as.numeric(knnDF[,11])
+
+# training and test data do not have the labels of who won
+
+# training data is 2012
+trainingDF = knnDF[,c(7,8,9,10,11)]
+# testing data is 2016
+testDF = knnDF[,c(7,8,9,10,11)]
+
+train_target = knnDF[,12] 
+test_target = knnDF[,13]
+k = round(sqrt(nrow(knnDF)))
+
+
+election.predictor.2016 = knn(train = trainingDF, test = testDF, cl = train_target, k = k)
+
+# run with multiple values of k and plot accuracy for plotting part 5
+# test different k values,31，37，56，67，73，78
+election.predictor.2016.k31 = knn(train = trainingDF, test = testDF, cl = train_target, k = 31)
+election.predictor.2016.k37 = knn(train = trainingDF, test = testDF, cl = train_target, k = 37)
+election.predictor.2016.k56 = knn(train = trainingDF, test = testDF, cl = train_target, k = 56)
+election.predictor.2016.k67 = knn(train = trainingDF, test = testDF, cl = train_target, k = 67)
+election.predictor.2016.k73 = knn(train = trainingDF, test = testDF, cl = train_target, k = 73)
+election.predictor.2016.k78 = knn(train = trainingDF, test = testDF, cl = train_target, k = 78)
+
+#see the difference of the accuracy of different k values.
+accuracy.table.k31 = table(test_target, election.predictor.2016.k31)
+accuracy.percent.k31 = ( accuracy.table.k31[1,1] + accuracy.table.k31[2,2] ) / sum(accuracy.table.k31)
+
+accuracy.table.k37 = table(test_target, election.predictor.2016.k37)
+accuracy.percent.k37 = ( accuracy.table.k37[1,1] + accuracy.table.k37[2,2] ) / sum(accuracy.table.k37)
+
+accuracy.table.k56 = table(test_target, election.predictor.2016.k56)
+accuracy.percent.k56 = ( accuracy.table.k56[1,1] + accuracy.table.k56[2,2] ) / sum(accuracy.table.k56)
+
+accuracy.table.k67 = table(test_target, election.predictor.2016.k67)
+accuracy.percent.k67 = ( accuracy.table.k67[1,1] + accuracy.table.k67[2,2] ) / sum(accuracy.table.k67)
+
+accuracy.table.k73 = table(test_target, election.predictor.2016.k73)
+accuracy.percent.k73 = ( accuracy.table.k73[1,1] + accuracy.table.k73[2,2] ) / sum(accuracy.table.k73)
+
+accuracy.table.k78 = table(test_target, election.predictor.2016.k78)
+accuracy.percent.k78 = ( accuracy.table.k78[1,1] + accuracy.table.k78[2,2] ) / sum(accuracy.table.k78)
+
+# Put all the accuracy of different K values into a data frame for plotting purpose.
+
+accuframe1=data.frame(c(accuracy.percent.k31,accuracy.percent.k37,accuracy.percent.k56,accuracy.percent.k67,accuracy.percent.k73,accuracy.percent.k78))
+
+accuframe2=data.frame(c("31","37","56","67","73","78"))
+
+accuframe=cbind(accuframe1,accuframe2)
+names(accuframe)= c("Precentages", "K Values")
+
+ggplot(data=accuframe,aes(group=1))+geom_line(aes(x= accuframe$`K Values`, y= accuframe$Precentages))+labs(x= "K Values", y= "Predict Percentage" , title= "Predict Accuracy for Different K Values")
+
+# verifying accuracy
+accuracy.table = table(test_target, election.predictor.2016)
+
+accuracy.percent = ( accuracy.table[1,1] + accuracy.table[2,2] ) / sum(accuracy.table)
+```
+
+6 Discussion
+
+After adjusting the radius of each circle, the map suggested that most votes are distributed on the west and east coast.There are more portion of vote for Clinton on west coast, and there are more blue for west coast and middle. And  most dots are evenly distributed.  When we look at our predictor from step 4, there are a lot of counties that are having close percentage distribution for Clinton and Trump. And from the map, most of the dots in the middle and east coast are having same portion of area in pie. The predictor suggested Trump will have about 80 percent rate to win, and the pies on map also shows that Trump will have more portion for vote in each county. Therefore, we believe our predictors did well.
+
+7 References
+
+1. Mowry, Curtis, Adam Pimentel, Elizabeth Sparks, and Brittany Hanlon. "Materials Characterization Activities <https://cran.r-project.org/web/packages/mapplots/mapplots.pdf>
+2. "R: Value Matching." R: Value Matching. N.p., n.d. Web. 11 Dec. 2016. <https://stat.ethz.ch/R-manual/R-devel/library/base/html/match.html>.
+3. "State Abbreviations." States and Capitals. N.p., n.d. Web. 11 Dec. 2016. <http://www.50states.com/abbreviations.htm>.
+4."R: Get and Set Row Names for Data Frames." R: Get and Set Row Names for Data Frames. N.p., n.d. Web. 11 Dec. 2016. <https://stat.ethz.ch/R-manual/R-devel/library/base/html/row.names.html>.
+5. "Aggregate – A Powerful Tool for Data Frame in R." R-bloggers. N.p., 15 Nov. 2015. Web. 11 Dec. 2016. <https://www.r-bloggers.com/aggregate-a-powerful-tool-for-data-frame-in-r/>.
+6. "Adding a Legend to a Plot." R-bloggers. N.p., 20 July 2009. Web. 11 Dec. 2016. <https://www.r-bloggers.com/adding-a-legend-to-a-plot/>.
+7. "Mastering R Plot – Part 1: Colors, Legends and Lines." R-bloggers. N.p., 19 Jan. 2016. Web. 11 Dec. 2016. <https://www.r-bloggers.com/mastering-r-plot-part-1-colors-legends-and-lines/>.
+8. "R: Maxima and Minima." R: Maxima and Minima. N.p., n.d. Web. 11 Dec. 2016. <https://stat.ethz.ch/R-manual/R-devel/library/base/html/Extremes.html>.
+9. "R Tutorial Series: Simple Linear Regression." R-bloggers. N.p., 12 Feb. 2015. Web. 11 Dec. 2016. <https://www.r-bloggers.com/r-tutorial-series-simple-linear-regression/>.
+10. "Quick-R." Quick-R: Multiple Regression. N.p., n.d. Web. 11 Dec. 2016. <http://www.statmethods.net/stats/regression.html>.
+11. "Regression Models in R." Regression Models in R. N.p., n.d. Web. 11 Dec. 2016. <http://tutorials.iq.harvard.edu/R/Rstatistics/Rstatistics.html>.
+12. @DataCamp. "Machine Learning in R for Beginners." DataCamp Community. N.p., n.d. Web. 11 Dec. 2016. <https://www.datacamp.com/community/tutorials/machine-learning-in-r#gs.9IUrRxU>.
+13. Rdjalayer. "R - KNN - K Nearest Neighbor (part 1)." YouTube. YouTube, 09 Mar. 2015. Web. 11 Dec. 2016. <https://www.youtube.com/watch?v=GtgJEVxl7DY>
+14. Rdjalayer. "R - KNN - K Nearest Neighbor (part 2)." YouTube. YouTube, 09 Mar. 2015. Web. 11 Dec. 2016. <https://www.youtube.com/watch?v=DkLNb0CXw84>.
+
+This notes is for our team to see the coresponding catagory in the original file for convenience purpose.
+DP02:
+HC01_VC84,Estimate; EDUCATIONAL ATTAINMENT - Population 25 years and over
+
+HC01_VC85,Estimate; EDUCATIONAL ATTAINMENT - Less than 9th grade
+
+HC01_VC86,"Estimate; EDUCATIONAL ATTAINMENT - 9th to 12th grade, no diploma"
+
+HC01_VC87,Estimate; EDUCATIONAL ATTAINMENT - High school graduate (includes equivalency)
+
+HC01_VC88,"Estimate; EDUCATIONAL ATTAINMENT - Some college, no degree"
+
+HC01_VC89,Estimate; EDUCATIONAL ATTAINMENT - Associate's degree
+
+HC01_VC90,Estimate; EDUCATIONAL ATTAINMENT - Bachelor's degree
+
+HC01_VC91,Estimate; EDUCATIONAL ATTAINMENT - Graduate or professional degree
+
+HC01_VC128,Estimate; PLACE OF BIRTH - Total population
+
+HC01_VC129,Estimate; PLACE OF BIRTH – Native
+
+HC01_VC130,Estimate; PLACE OF BIRTH - Native - Born in United States
+
+HC01_VC131,Estimadte; PLACE OF BIRTH - Native - Born in United States - State of residence
+
+HC01_VC132,Estimate; PLACE OF BIRTH - Native - Born in United States - Different state
+
+HC01_VC133,"Estimate; PLACE OF BIRTH - Native - Born in Puerto Rico, U.S. Island areas, or born abroad 
+to American parent(s)"
+
+HC02_VC134,Estimate Margin of Error; PLACE OF BIRTH - Foreign born
+
+DPO3:
+
+HC01_VC04,Estimate; EMPLOYMENT STATUS - Population 16 years and over
+
+HC01_VC05,Estimate; EMPLOYMENT STATUS - In labor force
+
+HC01_VC06,Estimate; EMPLOYMENT STATUS - In labor force - Civilian labor force
+
+HC01_VC07,Estimate; EMPLOYMENT STATUS - In labor force - Civilian labor force – Employed
+
+HC01_VC08,Estimate; EMPLOYMENT STATUS - In labor force - Civilian labor force – Unemployed
+
+HC01_VC10,Estimate; EMPLOYMENT STATUS - Not in labor force
+
+HC01_VC74,Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - Total households
+
+HC01_VC75,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - Less than $10,000"
+
+HC01_VC76,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $10,000 to $14,999"
+
+HC01_VC77,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $15,000 to $24,999"
+
+HC01_VC78,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $25,000 to $34,999"
+
+HC01_VC79,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $35,000 to $49,999"
+
+HC01_VC80,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $50,000 to $74,999"
+
+HC02_VC81,"Estimate Margin of Error; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $75,000 
+to $99,999"
+
+HC01_VC82,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $100,000 to $149,999"
+
+HC01_VC83,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $150,000 to $199,999"
+
+HC01_VC84,"Estimate; INCOME AND BENEFITS (IN 2010 INFLATION-ADJUSTED DOLLARS) - $200,000 or more"
+
+
+
+
+
+
