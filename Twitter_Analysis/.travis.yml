@@ -1,0 +1,8 @@
+language: python
+python:
+  - "3.6"
+install:
+  - pip install pytest
+  - pip install pandas
+script:
+  - pytest tests.py
