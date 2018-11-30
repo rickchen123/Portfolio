@@ -1,2 +1,0 @@
-# Rossmann Store Sales
-## The goal of this competition is to predict the sale of all the Rossmann stores. Since it is a regression problem, I will use Lasso, Ridge, Elastice Net, XGBoost, and Random forest to do the forecasting. 
